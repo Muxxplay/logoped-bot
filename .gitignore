@@ -1,0 +1,13 @@
+# Maxfiy ma'lumotlar
+.env
+
+# Ma'lumotlar bazasi
+logoped.db
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# VS Code
+.vscode/
