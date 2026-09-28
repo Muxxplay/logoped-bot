@@ -52,11 +52,15 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          # Bot o'z-o'zidan to'xtamaydi; faqat timeout bo'yicha to'xtaydi
+          # Bot o'z-o'zidan to'xtamaydi; faqat ishlash vaqti tugaydi.
+          # TRUE qiling (faqat BIRINCHI marta) — keyin FALSE qoldiring!
           DROP_PENDING_UPDATES: "false"
         run: |
           set -o pipefail
-          python logoped_bot.py 2>&1 | tee bot.log || true
+          # Muhim: botni step ichida vaqt bilan to'xtatamiz, shunda keyingi
+          # "bazani saqlash" step'i muvaffaqiyatli ishlaydi.
+          # (Job timeout'da esa keyingi step'lar umuman bajarilmay qoladi.)
+          timeout --signal=INT 280m python logoped_bot.py 2>&1 | tee bot.log || true
 
       - name: Bazani GitHub'ga saqlash (ma'lumotlar saqlansin)
         if: always()
@@ -67,10 +71,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "Bazada o'zgarish yo'q."
           else
-            git commit -m "chore: SQLite bazasini avtomatik saqlash"
+            git commit -q -m "chore: SQLite bazasini avtomatik saqlash"
             git push
+            echo "Baza saqlandi."
           fi
-
-      - name: Bot logini yuklash (agar bot to'xtagan bo'lsa)
-        if: failure()
-        run: cat bot.log
