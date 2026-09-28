@@ -27,11 +27,10 @@ import asyncio
 import logging
 import os
 import sqlite3
-import threading
 from datetime import datetime
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from dotenv import load_dotenv
+from aiohttp import web
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
@@ -66,19 +65,7 @@ if not BOT_TOKEN or not ADMIN_PASSWORD or not ADMIN_IDS:
     )
 
 MAX_LOGIN_ATTEMPTS = 3
-
-# Bazа fayli joylashuvi (serverda o'zgaradi, masalan: /data/logoped.db)
-DB_NAME = os.getenv("DB_PATH", "logoped.db")
-
-# Render / Fly / HF Spaces kabi platformalar PORT da eshilish kutadi —
-# shuning uchun kichik health-check serveri ishga tushiriladi.
-PORT = int(os.getenv("PORT", "0") or 0)
-HEALTH_PATH = os.getenv("HEALTH_PATH", "/health")
-
-# Bot qayta ishga tushganda navbatdagi xabarlar YO'QOLMASLIGI uchun False qiling.
-# (Faqat birinchi marta o'rnatishda True qo'yish yetarli.)
-DROP_PENDING_UPDATES = os.getenv("DROP_PENDING_UPDATES", "false").lower() in ("1", "true", "yes")
-
+DB_NAME = "logoped.db"
 LANGUAGES = ["uz", "ru", "en"]
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -1125,37 +1112,31 @@ async def admin_view_feedback(message: Message):
 #                          ISHGA TUSHIRISH
 # ============================================================
 
+async def health(request):
+    return web.Response(text="Logoped bot ishlayapti ✅")
+
+
+async def start_web_server():
+    """Render kabi hostinglar port ochilishini kutadi. PORT bo'lmasa (masalan Termux'da) o'tkazib yuboriladi."""
+    port = os.getenv("PORT")
+    if not port:
+        return
+    app = web.Application()
+    app.router.add_get("/", health)
+    app.router.add_get("/health", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", int(port))
+    await site.start()
+    logger.info(f"Veb-server {port}-portda ishga tushdi")
+
+
 async def main():
-    # --- Health-check serveri (Render / Fly / HF Spaces / Koyeb uchun) ---
-    if PORT:
-        class _Handler(BaseHTTPRequestHandler):
-            def do_GET(self):  # noqa: N802
-                if self.path.rstrip("/") in (HEALTH_PATH.rstrip("/"), ""):
-                    self.send_response(200)
-                    self.send_header("Content-Type", "text/plain; charset=utf-8")
-                    self.end_headers()
-                    self.wfile.write(b"logoped-bot: ok")
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-
-            def log_message(self, *args):  # noqa: A003
-                pass
-
-        httpd = ThreadingHTTPServer(("0.0.0.0", PORT), _Handler)
-        threading.Thread(target=httpd.serve_forever, daemon=True).start()
-        logger.info(f"Health-check server: 0.0.0.0:{PORT}{HEALTH_PATH}")
-
     init_db()
-    logger.info(f"Baza tayyor ({DB_NAME}). Bot ishga tushmoqda...")
-
-    try:
-        await bot.delete_webhook(drop_pending_updates=DROP_PENDING_UPDATES)
-    except Exception as e:
-        # Internet vaqtincha uzilib qolsa — bu jiddiy xato emas, polling'ni davom ettiramiz
-        logger.warning(f"delete_webhook muvaffaqiyatsiz ({e}), polling boshlanmoqda...")
-
-    await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    await start_web_server()
+    logger.info("Baza tayyor. Bot ishga tushmoqda...")
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
