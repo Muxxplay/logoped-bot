@@ -1,11 +1,14 @@
 # Maxfiy ma'lumotlar
 .env
 
-# Ma'lumotlar bazasi
+# Ma'lumotlar bazasi (faqat lokal ishlash uchun chalkashmasin)
 logoped.db
+logoped.db-journal
+test_tmp.db
 
 # Python
 venv/
+.venv/
 __pycache__/
 *.pyc
 

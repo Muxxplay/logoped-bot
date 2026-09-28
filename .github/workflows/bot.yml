@@ -1,0 +1,76 @@
+# ==========================================================
+#  BEPUL 24/7 ISHLASH — GitHub Actions (karta kerak emas!)
+# ==========================================================
+#  Bot har 5 soatda ishga tushadi va ~5 soat ishlaydi.
+#  To'xtaganda Telegram'dagi xabarlar navbatda saqlanib qoladi,
+#  keyingi ishga tushganda yetkazib beriladi (hech narsa yo'qolmaydi).
+#
+#  SOZLASH (bir marta):
+#    1) Repo → Settings → Secrets and variables → Actions
+#    2) Quyidagi 3 ta secret qo'shing:
+#         BOT_TOKEN, ADMIN_IDS, ADMIN_PASSWORD
+#    3) "Actions" → "Logoped Bot" → "Run workflow" → bosish
+# ==========================================================
+
+name: Logoped Bot
+
+on:
+  schedule:
+    # Har 5 soatda (00:00, 05:00, 10:00, ... UTC)
+    - cron: "0 */5 * * *"
+  workflow_dispatch:   # qo'lda ham ishga tushirish mumkin
+
+permissions:
+  contents: write
+
+concurrency:
+  group: logoped-bot
+  cancel-in-progress: false
+
+jobs:
+  bot:
+    # Ochiq repoda Actions bepul. 290 daqiqa < 6 soatlik chegara.
+    runs-on: ubuntu-latest
+    timeout-minutes: 290
+
+    steps:
+      - name: Kodni yuklab olish
+        uses: actions/checkout@v4
+
+      - name: Python o'rnatish
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Kutubxonalarni o'rnatish
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Botni ishga tushirish
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          ADMIN_IDS: ${{ secrets.ADMIN_IDS }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          # Bot o'z-o'zidan to'xtamaydi; faqat timeout bo'yicha to'xtaydi
+          DROP_PENDING_UPDATES: "false"
+        run: |
+          set -o pipefail
+          python logoped_bot.py 2>&1 | tee bot.log || true
+
+      - name: Bazani GitHub'ga saqlash (ma'lumotlar saqlansin)
+        if: always()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f logoped.db || true
+          if git diff --staged --quiet; then
+            echo "Bazada o'zgarish yo'q."
+          else
+            git commit -m "chore: SQLite bazasini avtomatik saqlash"
+            git push
+          fi
+
+      - name: Bot logini yuklash (agar bot to'xtagan bo'lsa)
+        if: failure()
+        run: cat bot.log
